@@ -1,0 +1,4 @@
+kafka-python
+pytesseract
+pdf2image
+pillow
