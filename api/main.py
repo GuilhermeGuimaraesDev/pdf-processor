@@ -1,38 +1,23 @@
-from fastapi import FastAPI, UploadFile, File
-import uuid
+from fastapi import FastAPI, UploadFile
+import shutil, os
+from producer.app import publish_pdf_metadata
 
-app = FastAPI(title="PDF Processor API", version="1.0.0")
+app = FastAPI()
 
-# Endpoint inicial
-@app.get("/")
-def home():
-    return {"status": "API rodando 🚀"}
+UPLOAD_DIR = "/data/incoming"
 
-# Endpoint para verificar a saúde do sistema
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-# Endpoint para upload de PDF
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    # Gera um ID único para o job
-    job_id = str(uuid.uuid4())
-    
-    # Aqui você vai salvar o arquivo em uma pasta (ex.: data/incoming/)
-    # e publicar uma mensagem no Kafka
-    return {"job_id": job_id, "filename": file.filename, "status": "enviado"}
+async def upload_pdf(file: UploadFile):
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    publish_pdf_metadata(file_path)
+    return {"filename": file.filename, "status": "enviado"}
 
-# Endpoint para consultar o status de um job
 @app.get("/status/{job_id}")
-def check_status(job_id: str):
-    # Aqui no futuro vamos consultar no Postgres
-    return {"job_id": job_id, "status": "processing"}
+def get_status(job_id: str):
+    return {"job_id": job_id, "status": "processing/done"}  # Conectar ao DB para status real
 
-# Endpoint para buscar o resultado de um job
 @app.get("/result/{job_id}")
 def get_result(job_id: str):
-    # Aqui no futuro vamos trazer o texto processado do Postgres
-    return {"job_id": job_id, "result": "Texto extraído será mostrado aqui"}
-
-
+    return {"job_id": job_id, "text": "texto extraído"}  # Conectar ao DB para resultado real
