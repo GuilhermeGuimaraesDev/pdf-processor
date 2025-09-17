@@ -1,5 +1,6 @@
 import os, json
-from kafka import KafkaConsumer, KafkaProducer
+import time
+from kafka import KafkaConsumer, KafkaProducer, errors
 import pytesseract
 from pdf2image import convert_from_path
 from sqlalchemy import create_engine, Table, Column, String, MetaData, Text
@@ -14,11 +15,20 @@ jobs = Table("jobs", metadata,
 metadata.create_all(engine)
 
 # Kafka
-consumer = KafkaConsumer(
-    "pdf_incoming",
-    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-    value_deserializer=lambda m: json.loads(m.decode("utf-8"))
-)
+for i in range(10):
+    try:
+        consumer = KafkaConsumer(
+            "pdf_incoming",
+            bootstrap_servers="kafka:9092",
+            group_id="pdf_group"
+        )
+        print("Conectado ao Kafka!")
+        break
+    except errors.NoBrokersAvailable:
+        print("Kafka não disponível, tentando novamente...")
+        time.sleep(5)
+else:
+    raise Exception("Não foi possível conectar ao Kafka após várias tentativas.")
 producer_dlq = KafkaProducer(
     bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
