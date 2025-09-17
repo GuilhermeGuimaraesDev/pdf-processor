@@ -4,5 +4,4 @@ python-dotenv
 psycopg2-binary
 sqlalchemy
 kafka-python
-
-
+python-multipart
