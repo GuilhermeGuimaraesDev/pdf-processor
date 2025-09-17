@@ -1,13 +1,21 @@
+networks:
+  pdfnet:
+
+volumes:
+  postgres-data:
+
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
+    image: confluentinc/cp-zookeeper:7.4.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
     ports:
       - "2181:2181"
+    networks:
+      - pdfnet
 
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.4.0
     depends_on:
       - zookeeper
     environment:
@@ -17,6 +25,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
+    networks:
+      - pdfnet
 
   postgres:
     image: postgres:14
@@ -28,14 +38,50 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pdfnet
 
   api:
     build:
-      context: ./api  # Caminho para o diretório da sua API
+      context: ./api
+      dockerfile: Dockerfile
+    volumes:
+      - ./data/incoming:/data/incoming
+      - ./data/processed:/data/processed
     ports:
-      - "8000:8000"  # Mapeia a porta 8000 do contêiner para a porta 8000 do host
+      - "8000:8000"
     depends_on:
-      - kafka  # Certifique-se de que o Kafka esteja em execução antes da API
+      - kafka
+      - postgres
+    networks:
+      - pdfnet
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://user:password@postgres:5432/pdfdb
 
-volumes:
-  postgres-data:
+  producer:
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - postgres
+    networks:
+      - pdfnet
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://user:password@postgres:5432/pdfdb
+
+  consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - postgres
+    networks:
+      - pdfnet
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://user:password@postgres:5432/pdfdb
+    
