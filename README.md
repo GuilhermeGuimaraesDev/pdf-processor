@@ -31,12 +31,14 @@ com extração de texto via OCR, utilizando arquitetura baseada em eventos.
 - [ ] Endpoint de consulta de status e resultado 
 
 ⚙️ Como rodar (Em desenvolvimento)
+
 git clone https://github.com/seu-usuario/pdf-processor.git
 cd pdf-processor
 docker compose up --build
 
 📌 Status
 🚧 Projeto em desenvolvimento 🚧
+
 Pipeline Kafka funcional, ajustes finais no consumer e OCR em andamento.
 
 ✍️ Autor
