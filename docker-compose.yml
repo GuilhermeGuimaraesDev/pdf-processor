@@ -45,32 +45,41 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+
     volumes:
       - ./data/incoming:/data/incoming
       - ./data/processed:/data/processed
+
     ports:
       - "8000:8000"
+
     depends_on:
       - kafka
       - postgres
+
     networks:
       - pdfnet
+
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DATABASE_URL: postgresql://user:password@postgres:5432/pdfdb
-
-  
 
   consumer:
     build:
       context: ./consumer
       dockerfile: Dockerfile
+
+    volumes:
+      - ./data/incoming:/data/incoming
+      - ./data/processed:/data/processed
+
     depends_on:
       - kafka
       - postgres
+
     networks:
       - pdfnet
+
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DATABASE_URL: postgresql://user:password@postgres:5432/pdfdb
-    
