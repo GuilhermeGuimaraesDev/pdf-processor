@@ -1,52 +1,137 @@
-import os, json
-import time
-from kafka import KafkaConsumer, KafkaProducer, errors
-import pytesseract
+import json
+import os
+from kafka import KafkaConsumer, KafkaProducer
+from sqlalchemy import create_engine, text
 from pdf2image import convert_from_path
-from sqlalchemy import create_engine, Table, Column, String, MetaData, Text
+import pytesseract
+from PIL import Image
 
-# Conexão DB
-engine = create_engine(os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/pdfdb"))
-metadata = MetaData()
-jobs = Table("jobs", metadata,
-             Column("id", String, primary_key=True),
-             Column("filename", String),
-             Column("text", Text))
-metadata.create_all(engine)
+# =========================
+# CONFIGURAÇÕES
+# =========================
 
-# Kafka
-for i in range(10):
-    try:
-        consumer = KafkaConsumer(
-            "pdf_incoming",
-            bootstrap_servers="kafka:9092",
-            group_id="pdf_group"
+KAFKA_BROKER = "kafka:9092"
+TOPIC_NAME = "pdf_incoming"
+DEAD_LETTER_TOPIC = "pdf_dead_letter"
+
+POSTGRES_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@postgres:5432/pdf_processor"
+)
+
+PDF_INPUT_DIR = "/data/incoming"
+
+# =========================
+# CONEXÃO POSTGRES
+# =========================
+
+engine = create_engine(POSTGRES_URL)
+
+# =========================
+# CRIA TABELA AUTOMATICAMENTE
+# =========================
+
+with engine.begin() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS documentos (
+            id SERIAL PRIMARY KEY,
+            filename TEXT NOT NULL,
+            texto_extraido TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        print("Conectado ao Kafka!")
-        break
-    except errors.NoBrokersAvailable:
-        print("Kafka não disponível, tentando novamente...")
-        time.sleep(5)
-else:
-    raise Exception("Não foi possível conectar ao Kafka após várias tentativas.")
-producer_dlq = KafkaProducer(
-    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+    """))
+
+print("✅ Tabela verificada/criada com sucesso")
+
+# =========================
+# CONSUMER KAFKA
+# =========================
+
+consumer = KafkaConsumer(
+    TOPIC_NAME,
+    bootstrap_servers=KAFKA_BROKER,
+    auto_offset_reset="earliest",
+    enable_auto_commit=True,
+    group_id="pdf_group_v3",
+    value_deserializer=lambda x: json.loads(x.decode("utf-8"))
+)
+
+# =========================
+# PRODUCER PARA DEAD LETTER
+# =========================
+
+producer = KafkaProducer(
+    bootstrap_servers=KAFKA_BROKER,
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
+
+print("🚀 Consumer iniciado e aguardando mensagens...")
+
+# =========================
+# PROCESSAMENTO
+# =========================
 
 for message in consumer:
     try:
         data = message.value
-        pdf_path = data["path"]
-        pages = convert_from_path(pdf_path, dpi=300)
-        text = ""
-        for page in pages:
-            text += pytesseract.image_to_string(page, lang="por+eng")
-        # Salva no DB
-        with engine.connect() as conn:
-            conn.execute(jobs.insert().values(id=data["id"], filename=pdf_path, text=text))
-        print(f"Processado: {data['id']}")
-    except Exception as e:
-        print(f"Erro ao processar {data['id']}: {e}")
-        producer_dlq.send("pdf_dead_letter", value={"id": data.get("id"), "path": data.get("path"), "error": str(e)})
 
+        filename = data["id"]
+        filepath = data["path"]
+
+        print(f"📄 Processando PDF: {filename}")
+
+        # =========================
+        # VERIFICA SE O PDF EXISTE
+        # =========================
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Arquivo não encontrado: {filepath}")
+
+        # =========================
+        # CONVERTE PDF EM IMAGENS
+        # =========================
+
+        pages = convert_from_path(filepath)
+
+        texto_final = ""
+
+        # =========================
+        # OCR EM CADA PÁGINA
+        # =========================
+
+        for i, page in enumerate(pages):
+            print(f"🔍 OCR página {i + 1}")
+
+            texto = pytesseract.image_to_string(page, lang="por")
+            texto_final += texto + "\n"
+
+        # =========================
+        # SALVA NO BANCO
+        # =========================
+
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO documentos (filename, texto_extraido)
+                    VALUES (:filename, :texto)
+                """),
+                {
+                    "filename": filename,
+                    "texto": texto_final
+                }
+            )
+
+        print(f"✅ PDF processado com sucesso: {filename}")
+
+    except Exception as e:
+        print(f"❌ Erro ao processar arquivo: {e}")
+
+        producer.send(
+            DEAD_LETTER_TOPIC,
+            {
+                "erro": str(e),
+                "mensagem_original": message.value
+            }
+        )
+
+        producer.flush()
