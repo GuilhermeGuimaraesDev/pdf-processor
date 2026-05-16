@@ -48,3 +48,12 @@ Cliente → API (FastAPI) → Kafka → Consumer → OCR → PostgreSQL
 git clone https://github.com/seu-usuario/pdf-processor.git
 cd pdf-processor
 docker compose up --build
+```
+
+👤 Autor
+
+Guilherme Guimarães Paiva
+
+GitHub: https://github.com/GuilhermeGuimaraesDev
+
+LinkedIn: https://www.linkedin.com/in/guilherme-guimaraes-paiva
