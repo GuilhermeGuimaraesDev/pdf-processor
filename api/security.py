@@ -1,6 +1,18 @@
 import hashlib
 import os
+import fitz
 
+
+# ==========================
+# Configurações
+# ==========================
+
+MAX_FILE_SIZE_MB = 20
+
+
+# ==========================
+# Funções auxiliares
+# ==========================
 
 def calcular_sha256(caminho_pdf):
     sha256 = hashlib.sha256()
@@ -22,20 +34,68 @@ def obter_tamanho_mb(caminho_pdf):
     return round(tamanho_bytes / (1024 * 1024), 2)
 
 
+# ==========================
+# Análise de Segurança
+# ==========================
+
 def analisar_pdf(caminho_pdf):
     tamanho = obter_tamanho_mb(caminho_pdf)
     sha256 = calcular_sha256(caminho_pdf)
 
-    aprovado = True
-    motivo = "Arquivo aprovado."
+    documento = fitz.open(caminho_pdf)
 
-    if tamanho > 20:
+    page_count = documento.page_count
+    encrypted = documento.is_encrypted
+    metadata = documento.metadata
+
+    documento.close()
+
+    checks = {
+        "sha256": sha256,
+        "size_mb": tamanho,
+        "page_count": page_count,
+        "encrypted": encrypted,
+        "metadata": metadata,
+    }
+
+    # ======================
+    # SCORE
+    # ======================
+    score = 100
+    aprovado = True
+    reason = "Arquivo aprovado."
+
+    # criptografia
+    if encrypted:
+        score -= 40
         aprovado = False
-        motivo = "Arquivo maior que 20 MB."
+        reason = "PDF criptografado detectado."
+
+    # páginas excessivas
+    if page_count > 150:
+        score -= 10
+        score -= 40
+        aprovado = False
+        reason = "Documento muito grande (possível risco)."
+
+    elif page_count > 50:
+         score -= 25
+
+    elif page_count > 10:
+        score -= 10
+
+    # metadados básicos ausentes
+    if not metadata.get("author") or not metadata.get("creator"):
+        score -= 10
+
+    # segurança final
+    if score < 60:
+        aprovado = False
+        reason = "Arquivo considerado suspeito pelo sistema."
 
     return {
         "approved": aprovado,
-        "reason": motivo,
-        "size_mb": tamanho,
-        "sha256": sha256,
+        "score": score,
+        "reason": reason,
+        "checks": checks
     }
