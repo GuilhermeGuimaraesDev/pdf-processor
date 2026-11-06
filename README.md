@@ -57,23 +57,6 @@ O sistema realiza:
 - Docker / Docker Compose – Containerização e gerenciamento dos serviços.
 
 ---
-Zookeeper – Gerenciamento do Kafka.
-
-PostgreSQL – Banco de dados relacional.
-
-SQLAlchemy – ORM para interação com o banco.
-
-pdf2image – Conversão de PDFs em imagens.
-
-Poppler – Suporte à conversão de documentos PDF.
-
-Tesseract OCR – Extração de texto das imagens.
-
-Pillow – Manipulação de imagens.
-
-Docker / Docker Compose – Containerização e gerenciamento dos serviços.
-
----
 
 🔐 Segurança e Validação de Arquivos
 
